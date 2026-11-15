@@ -9,6 +9,7 @@
 // ready (or "packviewer-failed" if WebGL is not available).
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const LOOKS = {
   polycarbonate: { color: 0x3b4248, roughness: 0.45, metalness: 0.0, edges: 0x9aa4ad },
@@ -20,10 +21,12 @@ const LOOKS = {
   abs: { color: 0x1e2124, roughness: 0.8, metalness: 0.0 },
   foam: { color: 0x2a2c2e, roughness: 1.0, metalness: 0.0 },
   steel: { color: 0x1a1b1c, roughness: 0.4, metalness: 0.2 },
+  holder: { color: 0x141517, roughness: 0.7, metalness: 0.0 },         // black ABS / PC cell holders
+  insulator: { color: 0x3d7a46, roughness: 0.9, metalness: 0.0 },      // green fish paper rings
 };
 // (No environment map, so metals stay at low metalness: high metalness would render them black.)
 // See-through mode fades the walls and everything that hides the cells.
-const SEE_THROUGH = { polycarbonate: 0.28, nickel: 0.18, foam: 0.12 };
+const SEE_THROUGH = { polycarbonate: 0.28, nickel: 0.18, foam: 0.12, holder: 0.35 };
 const VIEW_DIR = new THREE.Vector3(0.75, 0.6, 1.0).normalize();   // front-right, from above
 
 function material(name) {
@@ -31,9 +34,22 @@ function material(name) {
   return new THREE.MeshStandardMaterial({ color: l.color, roughness: l.roughness, metalness: l.metalness, side: THREE.DoubleSide });
 }
 
-function shapeFrom(outline, holes) {
+function shapeFrom(outline, holes, circles, slots) {
   const shape = new THREE.Shape(outline.map(([x, y]) => new THREE.Vector2(x, y)));
   for (const h of holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
+  if (circles) {   // round holes sent as centers + one radius (the holder bores)
+    for (const [x, y] of circles.centers) shape.holes.push(new THREE.Path().absarc(x, y, circles.radius, 0, Math.PI * 2, true));
+  }
+  if (slots) {     // oval slots along the strip (weld slots): two half circles joined by straight sides
+    const r = slots.width / 2, h = slots.length / 2 - r;
+    for (const [x, y] of slots.centers) {
+      const p = new THREE.Path();
+      p.absarc(x, y + h, r, 0, Math.PI, false);
+      p.absarc(x, y - h, r, Math.PI, Math.PI * 2, false);
+      p.closePath();
+      shape.holes.push(p);
+    }
+  }
   return shape;
 }
 
@@ -109,8 +125,8 @@ class Viewer {
   }
 
   addExtrusion(s) {
-    const geom = new THREE.ExtrudeGeometry(shapeFrom(s.outline, s.holes),
-                                           { depth: s.thickness, bevelEnabled: false, curveSegments: 1 });
+    const geom = new THREE.ExtrudeGeometry(shapeFrom(s.outline, s.holes, s.circle_holes, s.slot_holes),
+                                           { depth: s.thickness, bevelEnabled: false, curveSegments: s.circle_holes || s.slot_holes ? 10 : 1 });
     const m = frameMatrix(s.frame);
     const mesh = new THREE.Mesh(geom, this.materials[s.material]);
     mesh.matrixAutoUpdate = false;
@@ -171,10 +187,20 @@ class Viewer {
   }
 
   addBoxes(s) {
+    const geoms = s.boxes.map(([[x0, y0, z0], [x1, y1, z1]]) =>
+      new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
+    if (!s.explode_each && geoms.length > 1) {     // all move together: one merged mesh (holder tabs are hundreds of boxes)
+      const mesh = new THREE.Mesh(mergeGeometries(geoms), this.materials[s.material]);
+      geoms.forEach(g => g.dispose());
+      mesh.name = s.name;
+      mesh.renderOrder = s.material in SEE_THROUGH ? 1 : 0;
+      this.group.add(mesh);
+      const off = offsets(s, 1)[0];
+      this.movers.push({ apply: t => mesh.position.copy(off).multiplyScalar(t) });
+      return;
+    }
     const offs = offsets(s, s.boxes.length);
-    for (const [i, [[x0, y0, z0], [x1, y1, z1]]] of s.boxes.entries()) {
-      const geom = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
-      geom.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    for (const [i, geom] of geoms.entries()) {
       const mesh = new THREE.Mesh(geom, this.materials[s.material]);
       mesh.name = s.name;
       mesh.renderOrder = s.material in SEE_THROUGH ? 1 : 0;
