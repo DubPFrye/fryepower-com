@@ -19,7 +19,7 @@ const LOOKS = {
   cell_insulator: { color: 0xecebe6, roughness: 0.8, metalness: 0.0 },
   nickel: { color: 0xc9c8bd, roughness: 0.35, metalness: 0.2 },
   abs: { color: 0x1e2124, roughness: 0.8, metalness: 0.0 },
-  foam: { color: 0x2a2c2e, roughness: 1.0, metalness: 0.0 },
+  foam: { color: 0x8c9096, roughness: 1.0, metalness: 0.0, texture: "foam" },   // dark grey closed-cell foam (times the grey texture)
   steel: { color: 0x1a1b1c, roughness: 0.4, metalness: 0.2 },
   holder: { color: 0x141517, roughness: 0.7, metalness: 0.0 },         // black ABS / PC cell holders
   insulator: { color: 0x3d7a46, roughness: 0.9, metalness: 0.0 },      // green fish paper rings
@@ -31,7 +31,53 @@ const VIEW_DIR = new THREE.Vector3(0.75, 0.6, 1.0).normalize();   // front-right
 
 function material(name) {
   const l = LOOKS[name] || LOOKS.abs;
-  return new THREE.MeshStandardMaterial({ color: l.color, roughness: l.roughness, metalness: l.metalness, side: THREE.DoubleSide });
+  const m = new THREE.MeshStandardMaterial({ color: l.color, roughness: l.roughness, metalness: l.metalness, side: THREE.DoubleSide });
+  if (l.texture === "foam") {   // speckled cells, also used as a bump map; box UVs are in mm / FOAM_TILE
+    const tex = foamTexture();
+    m.map = tex;
+    m.bumpMap = tex;
+    m.bumpScale = 0.6;
+  }
+  return m;
+}
+
+// Foam: a tiling noise of light and dark pores on mid grey, drawn once on a canvas
+const FOAM_TILE = 12;      // mm of foam per texture repeat
+function foamTexture() {
+  const n = 128, c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d");
+  g.fillStyle = "#8a8d92";
+  g.fillRect(0, 0, n, n);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 1400; i++) {
+    const x = rnd() * n, y = rnd() * n, r = 0.6 + rnd() * 1.8, v = rnd();
+    g.fillStyle = v < 0.6 ? `rgba(40,42,46,${0.35 + rnd() * 0.5})` : `rgba(200,203,208,${0.2 + rnd() * 0.3})`;
+    for (const [dx, dy] of [[0, 0], [n, 0], [-n, 0], [0, n], [0, -n]]) {   // wrap so it tiles
+      g.beginPath();
+      g.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// BoxGeometry gives every face UVs 0..1; rescale them to the face size in mm so a texture keeps
+// its scale on long and short boxes alike. Faces: +x, -x, +y, -y, +z, -z (4 vertices each).
+function scaleBoxUVs(geom, w, h, d, tile) {
+  const uv = geom.attributes.uv, size = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) {
+    for (let k = 0; k < 4; k++) {
+      const i = f * 4 + k;
+      uv.setXY(i, uv.getX(i) * size[f][0] / tile, uv.getY(i) * size[f][1] / tile);
+    }
+  }
+  uv.needsUpdate = true;
+  return geom;
 }
 
 function shapeFrom(outline, holes, circles, slots) {
@@ -187,8 +233,12 @@ class Viewer {
   }
 
   addBoxes(s) {
-    const geoms = s.boxes.map(([[x0, y0, z0], [x1, y1, z1]]) =>
-      new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
+    const textured = (LOOKS[s.material] || {}).texture;
+    const geoms = s.boxes.map(([[x0, y0, z0], [x1, y1, z1]]) => {
+      const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+      if (textured) scaleBoxUVs(g, x1 - x0, y1 - y0, z1 - z0, FOAM_TILE);
+      return g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    });
     if (!s.explode_each && geoms.length > 1) {     // all move together: one merged mesh (holder tabs are hundreds of boxes)
       const mesh = new THREE.Mesh(mergeGeometries(geoms), this.materials[s.material]);
       geoms.forEach(g => g.dispose());
