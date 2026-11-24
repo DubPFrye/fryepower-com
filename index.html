@@ -30,6 +30,8 @@
   .contact-box dt { font-weight: 600; }
   .contact-box dd { margin: 0; color: var(--muted); }
   section[id], [id="parts"] { scroll-margin-top: 72px; }
+  .card.project .shot { display: block; width: 100%; margin-bottom: 6px; }
+  .card.project .shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: #0d1013; }
   .section-alt { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   .card.project .links { display: flex; flex-wrap: wrap; gap: 10px; }
   .btn.small { padding: 8px 14px; font-size: .92rem; }
@@ -50,7 +52,6 @@
         <li class="hide-sm"><a href="#jetson">Jetson mods</a></li>
         <li class="hide-sm"><a href="#about">About</a></li>
         <li><a href="https://github.com/DubPFrye" target="_blank" rel="noopener">GitHub</a></li>
-        <li><a class="nav-cta" href="configurator/">Configure<span class="hide-sm"> a pack</span></a></li>
       </ul>
     </nav>
   </div>
@@ -76,14 +77,14 @@
       <p class="lead">Things I made for my own bikes and put online so you can use them too. They run in your browser; nothing to install and no account.</p>
       <div class="grid">
         <article class="card project" id="configurator">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21 10v4"/><path d="M7 10v4M11 10v4M15 10v4"/></svg>
+          <a class="shot" href="configurator/"><img src="images/configurator-polycarbonate.jpg" alt="3D view of a 20S4P pack in the polycarbonate-wall enclosure" width="640" height="360" loading="lazy"></a>
           <span class="badge">Alpha</span>
           <h3>Battery configurator: polycarbonate walls</h3>
           <p>Lay out an 18650 or 21700 pack, see voltage, capacity and size update, and download cut files, a parts list and a Fusion 360 model. The whole enclosure is cut by SendCutSend.</p>
           <div class="links"><a class="btn primary" href="configurator/">Open the configurator</a></div>
         </article>
         <article class="card project">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20h16"/><path d="M6 20V9h12v11"/><path d="M9 4h6l1 5H8z"/><path d="M9 13h6M9 16h6"/></svg>
+          <a class="shot" href="configurator-printed/"><img src="images/configurator-printed.jpg" alt="3D view of a 20S4P pack in the printed-wall enclosure" width="640" height="360" loading="lazy"></a>
           <span class="badge">Alpha</span>
           <h3>Battery configurator: printed walls</h3>
           <p>The same pack layout with 3D-printed ABS walls, joined by coupling nuts and allthread instead of long standoffs. Only the side plates and base plate are cut.</p>
