@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Battery Configurator (Printed walls) | FryePower</title>
+<meta name="description" content="Configure an e-bike battery pack: pick cells and a series/parallel layout, see the enclosure parts, and download the build files.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  .app { padding: 48px 0 80px; }
+  .app .wrap { display: grid; grid-template-columns: 300px 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .app .wrap { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .panel h2 { font-size: 1.05rem; margin: 0 0 14px; }
+  .panel + .panel { margin-top: 18px; }
+
+  .field { display: grid; gap: 6px; margin-bottom: 16px; }
+  .field label { font-weight: 600; font-size: .92rem; display: flex; justify-content: space-between; }
+  .field output { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .field select, .field input[type=range], .field input[type=number] { width: 100%; font: inherit; }
+  .field select, .field input[type=number] { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .field input[type=range] { accent-color: var(--accent); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .92rem; margin-bottom: 8px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+  .pair.off { opacity: .45; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 0; }
+
+  .main-col { display: grid; gap: 18px; min-width: 0; }
+  .main-col .panel + .panel { margin-top: 0; }
+  .preview { aspect-ratio: 16 / 7; display: grid; place-items: center; background: var(--bg); border-radius: 10px; border: 1px dashed var(--line); overflow: hidden; }
+  .preview svg { width: 100%; height: 100%; }
+  .preview .cell { fill: color-mix(in srgb, var(--accent) 22%, var(--surface)); stroke: color-mix(in srgb, var(--accent) 60%, transparent); stroke-width: 1.5; }
+  .preview .group { fill: none; stroke: var(--muted); stroke-opacity: .35; stroke-dasharray: 3 3; }
+  .preview .lbl { fill: var(--muted); font-size: 11px; font-family: inherit; }
+  .preview[hidden], .viewer[hidden] { display: none; }
+
+  .view-tabs { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+  .view-tabs button { font: inherit; font-size: .88rem; font-weight: 600; padding: 6px 14px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
+  .view-tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+  .view-tabs button[hidden] { display: none; }
+  .viewer { position: relative; aspect-ratio: 16 / 9; min-height: 260px; background: var(--bg); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; touch-action: none; }
+  /* absolute, so the canvas pixel size can never widen the panel */
+  .viewer canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; cursor: grab; }
+  .viewer canvas:active { cursor: grabbing; }
+  .viewer.stale canvas { opacity: .25; }
+  .viewer .tools { position: absolute; z-index: 1; top: 10px; right: 10px; display: flex; gap: 8px; align-items: center; }
+  .viewer .tools button, .viewer .tools label { font: inherit; font-size: .82rem; font-weight: 600; padding: 5px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--text); cursor: pointer; display: flex; gap: 6px; align-items: center; }
+  .viewer .tools input { margin: 0; accent-color: var(--accent); }
+  /* Full screen: the browser's own (Esc leaves), or the page-filling fallback where it is missing (iPhone) */
+  .viewer:fullscreen { aspect-ratio: auto; width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
+  .viewer.expanded { position: fixed; inset: 0; z-index: 1000; aspect-ratio: auto; min-height: 0; border: 0; border-radius: 0; }
+  body.viewer-expanded { overflow: hidden; }
+  .viewer .tools .explode { cursor: default; }
+  .viewer .tools .explode input { width: 90px; cursor: pointer; }
+  @media (max-width: 600px) { .viewer .tools { flex-wrap: wrap; justify-content: flex-end; left: 10px; } }
+  .viewer .help { position: absolute; z-index: 1; left: 12px; bottom: 8px; margin: 0; font-size: .78rem; color: var(--muted); pointer-events: none; }
+  /* no min-height here: with the aspect ratio it would force a width wider than a phone screen */
+  @media (max-width: 600px) { .viewer { aspect-ratio: 4 / 3; min-height: 0; } }
+
+  .status { border-radius: 10px; padding: 12px 14px; margin: 0 0 14px; font-size: .92rem; }
+  .status ul { margin: 6px 0 0; padding-left: 1.2em; }
+  .status.error { background: color-mix(in srgb, #d64545 14%, var(--surface)); border: 1px solid color-mix(in srgb, #d64545 45%, transparent); }
+  .status.warn { background: color-mix(in srgb, #d99a1e 14%, var(--surface)); border: 1px solid color-mix(in srgb, #d99a1e 45%, transparent); }
+  .status[hidden] { display: none; }
+
+  .specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0; }
+  .spec { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+  .spec dt { font-size: .8rem; color: var(--muted); }
+  .spec dd { margin: 2px 0 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spec dd small { font-size: .8rem; font-weight: 500; color: var(--muted); }
+
+  .parts { display: grid; gap: 14px; }
+  .part-card { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; align-items: center; background: var(--bg); border-radius: 10px; padding: 12px; }
+  @media (max-width: 600px) { .part-card { grid-template-columns: 1fr; } }
+  .part-card svg { display: block; width: 100%; height: auto; }
+  .spec.wide { grid-column: span 2; }
+  .part-card .part { fill: color-mix(in srgb, var(--accent) 16%, var(--surface)); stroke: var(--text); stroke-width: .6; }
+  .part-card h3 { margin: 0 0 4px; font-size: .95rem; }
+  .part-card p { margin: 0; color: var(--muted); font-size: .85rem; }
+
+  table.bom { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  .bom th, .bom td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .bom th { color: var(--muted); font-weight: 600; }
+  .bom td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bom td small { display: block; color: var(--muted); }
+  .bom-wrap { overflow-x: auto; }
+
+  .downloads { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
+  .downloads li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; }
+  .downloads span small { display: block; color: var(--muted); font-size: .82rem; }
+  .downloads .btn { padding: 8px 14px; font-size: .9rem; }
+  .note { font-size: .85rem; color: var(--muted); margin: 14px 0 0; }
+
+  .alpha { margin-top: 20px; max-width: 760px; border-radius: 10px; padding: 14px 16px; font-size: .95rem;
+           background: color-mix(in srgb, #d64545 16%, transparent); border: 1px solid color-mix(in srgb, #d64545 60%, transparent); }
+  .alpha strong { display: block; font-size: 1.02rem; margin-bottom: 4px; }
+  .alpha p { margin: 0; }
+  .badge.alpha-badge { background: #d64545; color: #fff; }
+  .designs { margin-top: 18px; max-width: 980px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .designs { grid-template-columns: 1fr; } }
+  .design { border: 1px solid var(--line, color-mix(in srgb, currentColor 18%, transparent)); border-radius: 10px;
+    padding: 14px 16px; font-size: .92rem; background: var(--surface); }
+  .design.here { border-color: color-mix(in srgb, #2f6fb5 70%, transparent); }
+  .design h3 { margin: 0 0 4px; font-size: 1.02rem; }
+  .design .where { margin: 0 0 8px; font-size: .85rem; opacity: .8; }
+  .design ul { margin: 4px 0 8px; padding-left: 18px; }
+  .design li { margin: 2px 0; }
+  .design .k { font-weight: 600; margin: 6px 0 0; }
+  .design p, .design li { font-size: .9rem; line-height: 1.45; max-width: none; }
+  .design .where { font-size: .82rem; }
+  #warnings { margin: 14px 0 0; }
+  .badge.variant-badge { background: #2f6fb5; color: #fff; margin-left: 6px; }
+
+  dialog.terms { max-width: 640px; width: calc(100% - 32px); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line);
+                 border-radius: var(--radius); background: var(--surface); color: var(--text); }
+  dialog.terms::backdrop { background: rgb(0 0 0 / .6); }
+  .terms form { padding: 24px; }
+  .terms h2 { margin: 0 0 12px; font-size: 1.25rem; }
+  .terms .terms-body { max-height: 50vh; overflow-y: auto; font-size: .92rem; padding-right: 6px; }
+  .terms .terms-body p { margin: 0 0 10px; }
+  .terms .terms-body ul { margin: 0 0 10px; padding-left: 1.2em; }
+  .terms .terms-body li { margin-bottom: 6px; }
+  .terms .check { margin: 16px 0; align-items: flex-start; }
+  .terms .check input { flex: none; margin-top: 3px; }
+  .terms .actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .terms .btn[disabled] { opacity: .5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="FryePower home">
+      <svg viewBox="49 48 1065 355" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M86,340 L151,340 L208,241 L304,241 L334,187 L236,187 L285,103 L584,103 L597,136 L567,187 L473,187 L506,125 L443,125 L320,340 L383,340 L440,241 L491,241 L532,340 L598,340 L558,241 L600,241 L659,140 L623,49 L253,49 Z M874,49 L810,49 L749,155 L705,49 L645,49 L714,217 L631,360 L73,360 L50,402 L672,402 Z M1113,49 L898,49 L706,381 L696,402 L911,402 L942,346 L793,346 L820,295 L852,241 L955,241 L986,187 L883,187 L932,103 L1083,103 Z"/></svg>
+      <span class="power" aria-hidden="true">POWER</span>
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="../#parts">Parts</a></li>
+        <li class="hide-sm"><a href="../#about">About</a></li>
+        <li class="hide-sm"><a href="../#contact">Contact</a></li>
+        <li><a class="nav-cta" href="./" aria-current="page">Configure<span class="hide-sm"> a pack</span></a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero compact">
+    <div class="wrap">
+      <span class="badge alpha-badge">Alpha</span><span class="badge variant-badge">Printed walls</span>
+      <h1>Battery configurator</h1>
+      <p>Pick a cell and a series/parallel layout. The enclosure, parts and bill of materials update as you go, and you can download the build files.</p>
+      <div class="alpha" role="note">
+        <strong>⚠ Alpha: untested design. Use at your own risk.</strong>
+        <p>No pack from this configurator has been built or tested yet, and the design has not been checked for safety. Lithium-ion packs can catch fire or explode if they are designed, built or charged wrong. Treat everything here as a starting point for your own engineering, not a proven design.</p>
+      </div>
+      <div class="designs" role="note" aria-label="Two enclosure designs">
+        <div class="design">
+          <h3>Polycarbonate walls</h3>
+          <p class="where"><a href="../configurator/">Open this configurator &rarr;</a></p>
+          <p style="margin:0">Every enclosure part is cut flat by SendCutSend: polycarbonate side plates and walls that lock together with tabs and slots, held by aluminum standoffs outside the walls.</p>
+          <p class="k">Pros</p><ul><li>No 3D printer needed: order the cut parts and assemble</li><li>Tabs and slots square the box up as it goes together</li><li>Every part is a flat cut part in a known material: nothing to dial in</li></ul>
+          <p class="k">Cons</p><ul><li>More cut parts per pack, so a higher SendCutSend bill</li><li>Long M5 standoffs are hard to find and cost several dollars each</li></ul>
+        </div>
+        <div class="design here">
+          <h3>Printed walls</h3>
+          <p class="where">You are on this one.</p>
+          <p style="margin:0">The side plates and base plate are cut by SendCutSend; the walls are 3D printed in ABS, in pieces that fit a 220 mm bed and join with 45&deg; V ends. Coupling nuts and allthread inside the walls clamp the side plates on.</p>
+          <p class="k">Pros</p><ul><li>Fewer cut parts; the walls cost only filament</li><li>Cheap coupling nuts and allthread instead of long standoffs, hidden inside the walls</li><li>V joints align the pieces and make a longer path for water</li><li>Wall strength is a setting (the wall web)</li></ul>
+          <p class="k">Cons</p><ul><li>Needs a 3D printer, print time and some test prints to dial in the fit</li><li>More pieces to print and assemble</li><li>The walls take the clamping load in ABS, so their strength depends on your print settings</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="app">
+    <div class="wrap">
+      <aside>
+        <div class="panel">
+          <h2>Pack setup</h2>
+          <div class="field">
+            <label for="cell">Cell</label>
+            <select id="cell"></select>
+          </div>
+          <div class="field">
+            <label for="series">Series (S) <output id="seriesOut" for="series"></output></label>
+            <input id="series" type="range" min="2" max="30" value="20">
+            <p class="hint">Sets the voltage. 10S ≈ 36 V, 13S ≈ 48 V, 14S ≈ 52 V, 20S ≈ 72 V.</p>
+          </div>
+          <div class="field">
+            <label for="parallel">Parallel (P) <output id="parallelOut" for="parallel"></output></label>
+            <input id="parallel" type="range" min="1" max="12" value="4">
+            <p class="hint">Sets the capacity and how much current the pack can supply.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Mounting</h2>
+          <label class="check"><input id="baseplate" type="checkbox" checked> Aluminum base plate</label>
+          <p class="hint" style="margin-bottom:12px" id="baseHint">The pack's side-plate hooks latch into a base plate that bolts to the frame. Set how far it reaches past the pack.</p>
+          <div class="pair" id="basePair">
+            <div class="field"><label for="front">Front (mm)</label><input id="front" type="number" min="0" max="200" step="1"></div>
+            <div class="field"><label for="rear">Rear (mm)</label><input id="rear" type="number" min="0" max="200" step="1"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Room for electronics</h2>
+          <p class="hint" style="margin-bottom:12px">Empty space inside the enclosure for your BMS, fuses and wiring. Height is above the cells; length is added along the pack, half at each end.</p>
+          <div class="pair">
+            <div class="field"><label for="extraH">Height (mm)</label><input id="extraH" type="number" min="0" max="200" step="1"></div>
+            <div class="field"><label for="extraL">Length (mm)</label><input id="extraL" type="number" min="0" max="200" step="1"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Printed walls</h2>
+          <p class="hint" style="margin-bottom:12px">ABS wall material on each side of the coupling nut pockets, 2 to 8 mm. A thicker web makes a stronger, wider wall (and a bigger pack).</p>
+          <div class="field"><label for="wallWeb">Wall web (mm)</label><input id="wallWeb" type="number" min="2" max="8" step="0.5"></div>
+        </div>
+      </aside>
+
+      <div class="main-col">
+        <div class="panel">
+          <h2 id="packTitle">Pack layout</h2>
+          <div class="status warn" id="engineStatus">Loading the configurator…</div>
+          <div class="status error" id="errors" hidden></div>
+          <div class="view-tabs" role="tablist" aria-label="Pack view">
+            <button role="tab" id="tab3d" aria-selected="true" aria-controls="view3d">3D view</button>
+            <button role="tab" id="tabCells" aria-selected="false" aria-controls="preview">Cell layout</button>
+          </div>
+          <div class="viewer" id="view3d" role="tabpanel" aria-labelledby="tab3d" aria-label="3D view of the assembled pack; drag to rotate">
+            <div class="tools">
+              <label class="explode">Exploded <input type="range" id="explode" min="0" max="1" step="0.01" value="0" aria-label="Exploded view amount"></label>
+              <label><input type="checkbox" id="seeThrough" checked> See-through</label>
+              <button type="button" id="resetView">Reset view</button>
+              <button type="button" id="fullScreen" aria-pressed="false">Full screen</button>
+            </div>
+            <p class="help">Drag to rotate · scroll or pinch to zoom · right-drag to pan</p>
+          </div>
+          <div class="preview" id="preview" role="tabpanel" aria-labelledby="tabCells" aria-label="Side-on drawing of the cell layout" hidden></div>
+          <div class="status warn" id="warnings" hidden></div>
+        </div>
+
+        <div class="panel">
+          <h2>Specs</h2>
+          <dl class="specs">
+            <div class="spec"><dt>Nominal voltage</dt><dd id="vNom"></dd></div>
+            <div class="spec"><dt>Full charge</dt><dd id="vMax"></dd></div>
+            <div class="spec"><dt>Capacity</dt><dd id="cap"></dd></div>
+            <div class="spec"><dt>Energy</dt><dd id="energy"></dd></div>
+            <div class="spec"><dt>Max continuous</dt><dd id="amps"></dd></div>
+            <div class="spec"><dt>Cell count</dt><dd id="count"></dd></div>
+            <div class="spec"><dt>Cell weight</dt><dd id="weight"></dd></div>
+            <div class="spec"><dt>Cell holder spacing</dt><dd id="pitch"></dd></div>
+            <div class="spec wide"><dt>Enclosure (length × height × width)</dt><dd id="size"></dd></div>
+          </dl>
+          <p class="note">Electrical figures are typical cell datasheet values (placeholder cell data). They don't include the BMS, nickel strip, enclosure or wiring.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Enclosure parts</h2>
+          <div class="parts" id="parts"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Bill of materials</h2>
+          <div class="bom-wrap"><table class="bom" id="bom"></table></div>
+          <p class="note" id="bomNote"></p>
+        </div>
+
+        <div class="panel">
+          <h2>Build files</h2>
+          <ul class="downloads">
+            <li><span>Build package (zip)<small>DXFs for SendCutSend, BOM, the configuration, and a Fusion 360 script for this pack</small></span><button class="btn primary" id="download" disabled>Download</button></li>
+          </ul>
+          <button class="btn primary" disabled>Send to SendCutSend</button>
+          <p class="note" id="dlNote">Sending straight to SendCutSend is coming later; for now upload the DXFs from the zip.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog class="terms" id="terms" aria-labelledby="termsTitle">
+  <form method="dialog">
+    <h2 id="termsTitle">Before you download: read and accept</h2>
+    <div class="terms-body">
+      <p><strong>This configurator is alpha software. The designs it produces have not been built, tested or verified by FryePower.</strong></p>
+      <ul>
+        <li>Lithium-ion battery packs store a lot of energy. A mistake in design, parts, assembly, charging or use can cause fire, explosion, toxic smoke, burns, serious injury, death or property damage.</li>
+        <li>The files (DXFs, bill of materials, Fusion 360 script and specs) are provided "as is", without warranty of any kind, including any warranty that they are correct, complete, safe or fit for any purpose. Cell data and electrical figures are placeholders.</li>
+        <li>You are solely responsible for checking every dimension, part, clearance and electrical value; for choosing a suitable BMS, fusing, wiring and charger; for building and testing the pack safely; and for following the laws and standards that apply where you live.</li>
+        <li>Only build a battery pack if you have the knowledge, tools and safe workspace to do it. If you are not sure, don't build it.</li>
+        <li>To the fullest extent the law allows, FryePower and its owners are not liable for any loss, damage or injury arising from use of this configurator or its files.</li>
+      </ul>
+      <p>By downloading, you accept these terms and use the files entirely at your own risk.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="termsAgree"> I have read and understand this, and I accept full responsibility for anything I build from these files.</label>
+    <div class="actions">
+      <button class="btn ghost" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="accept" id="termsAccept" disabled>Accept and download</button>
+    </div>
+  </form>
+</dialog>
+
+<footer>
+  <div class="wrap">&copy; <span id="yr">2026</span> FryePower. All rights reserved.</div>
+</footer>
+
+<script src="engine.js"></script>
+<script type="module" src="viewer.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const el = { cell: $("cell"), series: $("series"), parallel: $("parallel"), base: $("baseplate"), front: $("front"), rear: $("rear"),
+             extraH: $("extraH"), extraL: $("extraL"), wallWeb: $("wallWeb") };
+let cells = {}, seq = 0, timer = null;
+let viewer = null, lastAssembly = null;
+
+// Full-screen button for the 3D view: the Fullscreen API where there is one, otherwise the view
+// fills the page (iPhone Safari has no element full screen). Esc or the button leaves either.
+(() => {
+  const box = $("view3d"), btn = $("fullScreen");
+  const native = () => document.fullscreenElement === box;
+  const show = on => { btn.textContent = on ? "Exit full screen" : "Full screen"; btn.setAttribute("aria-pressed", String(on)); };
+  const setExpanded = on => { box.classList.toggle("expanded", on); document.body.classList.toggle("viewer-expanded", on); show(on); };
+  btn.addEventListener("click", async () => {
+    if (native()) return document.exitFullscreen();
+    if (box.classList.contains("expanded")) return setExpanded(false);
+    if (box.requestFullscreen && document.fullscreenEnabled) {
+      // Some embedded browsers accept the request and never go full screen: give it half a second
+      try { await Promise.race([box.requestFullscreen(), new Promise(r => setTimeout(r, 500))]); } catch (e) { /* fall back */ }
+      if (native()) return;
+    }
+    setExpanded(true);
+  });
+  document.addEventListener("fullscreenchange", () => show(native()));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && box.classList.contains("expanded")) setExpanded(false); });
+})();
+
+// 3D view (viewer.js, a module that loads three.js from the CDN after this script runs)
+window.addEventListener("packviewer-ready", () => {
+  viewer = PackViewer.mount($("view3d"));
+  $("seeThrough").addEventListener("change", e => viewer.setSeeThrough(e.target.checked));
+  $("resetView").addEventListener("click", () => viewer.resetView());
+  $("explode").addEventListener("input", e => viewer.setExplode(Number(e.target.value)));
+  viewer.setExplode(Number($("explode").value));
+  if (lastAssembly) viewer.setAssembly(lastAssembly);
+});
+function no3d() {            // no WebGL, or three.js did not load: fall back to the cell layout
+  $("tab3d").hidden = true;
+  showView("cells");
+}
+window.addEventListener("packviewer-failed", no3d);
+window.addEventListener("load", () => { if (!window.PackViewer) no3d(); });
+
+function showView(which) {
+  const is3d = which === "3d";
+  $("tab3d").setAttribute("aria-selected", is3d);
+  $("tabCells").setAttribute("aria-selected", !is3d);
+  $("view3d").hidden = !is3d;
+  $("preview").hidden = is3d;
+  if (is3d && viewer) viewer.resize();
+}
+$("tab3d").addEventListener("click", () => showView("3d"));
+$("tabCells").addEventListener("click", () => showView("cells"));
+
+const fmt = (n, d = 1) => Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const unit = (v, u) => `${v} <small>${u}</small>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function choices() {
+  return {
+    cell: el.cell.value, series: +el.series.value, parallel: +el.parallel.value,
+    base_plate: el.base.checked,
+    base_front_mm: +el.front.value, base_rear_mm: +el.rear.value,
+    extra_height_mm: +el.extraH.value, extra_length_mm: +el.extraL.value, wall_web_mm: +el.wallWeb.value,
+  };
+}
+
+function syncBase() {
+  const on = el.base.checked;
+  el.front.disabled = el.rear.disabled = !on;
+  $("basePair").classList.toggle("off", !on);
+  $("baseHint").textContent = on
+    ? "The pack's side-plate hooks latch into a base plate that bolts to the frame. Set how far it reaches past the pack."
+    : "No base plate: the side plates have no hooks, so the pack needs its own way to mount.";
+}
+
+function drawPack(s, p, pitch, dia) {
+  // Series groups run left to right, parallel cells stack top to bottom, at the holder pitch.
+  const pad = 24, w = s * pitch, h = p * pitch;
+  const vbW = w + pad * 2, vbH = h + pad * 2 + 14;
+  let out = `<svg viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
+  for (let i = 0; i < s; i++) {
+    const x = pad + i * pitch;
+    out += `<rect class="group" x="${x + 0.5}" y="${pad + 0.5}" width="${pitch - 1}" height="${h - 1}" rx="${pitch / 2}"/>`;
+    for (let j = 0; j < p; j++)
+      out += `<circle class="cell" cx="${x + pitch / 2}" cy="${pad + j * pitch + pitch / 2}" r="${dia / 2 - 0.75}"/>`;
+  }
+  out += `<text class="lbl" x="${pad}" y="${vbH - 8}">${Math.round(w)} × ${Math.round(h)} mm cell block</text></svg>`;
+  return out;
+}
+
+function showList(box, title, items) {
+  box.hidden = !items.length;
+  box.innerHTML = items.length ? `<b>${title}</b><ul>${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
+}
+
+function render(r) {
+  const c = choices();
+  $("packTitle").textContent = `Pack layout: ${r.name}`;
+  showList($("errors"), "This pack can't be built yet:", r.errors);
+  showList($("warnings"), "Manufacturing notes:", r.warnings);
+  $("preview").innerHTML = drawPack(c.series, c.parallel, r.specs.cell_pitch_mm, cells[c.cell].diameter_mm);
+  $("view3d").classList.toggle("stale", !r.ok);    // keep the last good pack, dimmed
+  if (r.ok) {
+    lastAssembly = r.assembly;
+    if (viewer) viewer.setAssembly(r.assembly);
+  }
+
+  const s = r.specs;
+  $("vNom").innerHTML = unit(fmt(s.nominal_v), "V");
+  $("vMax").innerHTML = unit(fmt(s.max_v), "V");
+  $("cap").innerHTML = unit(fmt(s.capacity_ah), "Ah");
+  $("energy").innerHTML = unit(fmt(s.energy_wh, 0), "Wh");
+  $("amps").innerHTML = unit(fmt(s.max_continuous_a, 0), "A");
+  $("count").innerHTML = unit(s.cells, "cells");
+  $("weight").innerHTML = unit(fmt(s.cell_weight_kg, 2), "kg");
+  $("pitch").innerHTML = unit(s.cell_pitch_mm, "mm");
+  $("size").innerHTML = r.ok ? unit(r.dims.pack_mm.map(v => Math.round(v)).join(" × "), "mm") : "–";
+
+  // One scale for every drawing (relative to the widest part), so sizes compare honestly
+  const maxW = r.ok ? Math.max(...r.parts.map(p => p.size_mm[0])) : 1;
+  $("parts").innerHTML = r.ok ? r.parts.map(p => `
+    <div class="part-card"><div style="width:${(p.size_mm[0] / maxW * 100).toFixed(1)}%">${p.svg}</div>
+      <div><h3>${esc(p.part_number)} · ${esc(p.description)}</h3>
+      <p>${p.process === "3d_print"
+        ? `${esc(p.material)} · qty ${p.quantity}<br>${p.size_mm[0]} × ${p.size_mm[1]} mm section, ${fmt(p.thickness_mm, 1)} mm tall<br>3D printed`
+        : `${esc(p.material)} ${p.thickness_mm} mm · qty ${p.quantity}<br>${p.size_mm[0]} × ${p.size_mm[1]} mm<br>
+      ${p.process === "laser" ? "Laser cut" : "CNC routed"}`}</p></div>
+    </div>`).join("") : `<p class="hint">Parts appear once the pack can be built.</p>`;
+
+  if (r.ok) {
+    const money = v => v == null ? "–" : "$" + fmt(v, 2);
+    $("bom").innerHTML = `<thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th>Supplier</th></tr></thead><tbody>` +
+      r.bom.lines.map(l => `<tr><td>${esc(l.item)}<small>${esc(l.description)}</small></td>
+        <td class="num">${fmt(l.quantity, Number.isInteger(l.quantity) ? 0 : 2)} ${esc(l.unit)}</td>
+        <td class="num">${money(l.cost)}</td><td>${esc([l.supplier, l.part_number].filter(Boolean).join(" "))}</td></tr>`).join("") + `</tbody>`;
+    $("bomNote").textContent = `Priced total ${money(r.bom.priced_total)}. ${r.bom.unpriced.length} of ${r.bom.lines.length} lines have no price yet.`;
+  } else {
+    $("bom").innerHTML = "";
+    $("bomNote").textContent = "";
+  }
+  $("download").disabled = !r.ok;
+}
+
+function refresh() {
+  const c = choices(), mine = ++seq;
+  $("seriesOut").textContent = `${c.series}S`;
+  $("parallelOut").textContent = `${c.parallel}P`;
+  try {
+    const r = Engine.pack(c);               // runs in the browser (engine.js)
+    if (mine !== seq) return;
+    render(r);
+  } catch (err) {
+    showList($("errors"), "The configurator could not build this pack:", [err.message]);
+    $("download").disabled = true;
+  }
+}
+
+function scheduleRefresh() { clearTimeout(timer); timer = setTimeout(refresh, 120); }
+
+// Every download first shows the disclaimer; the file is only built after "Accept and download".
+function askTerms() {
+  const dlg = $("terms");
+  $("termsAgree").checked = false;
+  $("termsAccept").disabled = true;
+  return new Promise(resolve => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "accept"), { once: true });
+    dlg.returnValue = "";
+    dlg.showModal();
+  });
+}
+
+async function download() {
+  if (!(await askTerms())) return;
+  const btn = $("download");
+  btn.disabled = true; btn.textContent = "Building…";
+  try {
+    await new Promise(r => setTimeout(r, 30));    // let "Building…" paint before the engine runs
+    const { name, bytes } = Engine.package(choices());
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    $("dlNote").textContent = `Downloaded ${name}.`;
+  } catch (err) {
+    $("dlNote").textContent = "Download failed: " + err.message;
+  } finally {
+    btn.textContent = "Download"; btn.disabled = false;
+  }
+}
+
+async function init() {
+  $("yr").textContent = new Date().getFullYear();
+  const status = msg => {
+    $("engineStatus").hidden = !msg;
+    $("engineStatus").textContent = msg;
+  };
+  try {
+    await Engine.start(status);
+    const o = Engine.options();
+    for (const c of o.cells) { cells[c.key] = c; el.cell.add(new Option(c.name, c.key)); }
+    [el.series.min, el.series.max] = o.limits.series;
+    [el.parallel.min, el.parallel.max] = o.limits.parallel;
+    const d = o.defaults;
+    el.cell.value = d.cell; el.series.value = d.series; el.parallel.value = d.parallel;
+    el.front.value = d.base_front_mm; el.rear.value = d.base_rear_mm;
+    el.extraH.value = d.extra_height_mm; el.extraL.value = d.extra_length_mm; el.wallWeb.value = d.wall_web_mm;
+    el.base.checked = d.base_plate; syncBase();
+  } catch (err) {
+    status("");
+    showList($("errors"), "The configurator engine did not load:",
+             [err.message + ". Check your connection and reload the page."]);
+    return;
+  }
+  Object.values(el).forEach(e => e.addEventListener("input", scheduleRefresh));
+  el.base.addEventListener("change", syncBase);
+  $("download").addEventListener("click", download);
+  $("termsAgree").addEventListener("change", e => { $("termsAccept").disabled = !e.target.checked; });
+  refresh();
+}
+init();
+</script>
+</body>
+</html>
