@@ -108,6 +108,21 @@
   .alpha strong { display: block; font-size: 1.02rem; margin-bottom: 4px; }
   .alpha p { margin: 0; }
   .badge.alpha-badge { background: #d64545; color: #fff; }
+  .top-view { padding: 28px 0 0; }
+  .top-view .designs { margin-top: 18px; }
+  .designs { margin-top: 18px; max-width: 980px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .designs { grid-template-columns: 1fr; } }
+  .design { border: 1px solid var(--line, color-mix(in srgb, currentColor 18%, transparent)); border-radius: 10px;
+    padding: 14px 16px; font-size: .92rem; background: var(--surface); }
+  .design.here { border-color: color-mix(in srgb, #2f6fb5 70%, transparent); }
+  .design h3 { margin: 0 0 4px; font-size: 1.02rem; }
+  .design .where { margin: 0 0 8px; font-size: .85rem; opacity: .8; }
+  .design ul { margin: 4px 0 8px; padding-left: 18px; }
+  .design li { margin: 2px 0; }
+  .design .k { font-weight: 600; margin: 6px 0 0; }
+  .design p, .design li { font-size: .9rem; line-height: 1.45; max-width: none; }
+  .design .where { font-size: .82rem; }
+  #warnings { margin: 14px 0 0; }
 
   dialog.terms { max-width: 640px; width: calc(100% - 32px); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line);
                  border-radius: var(--radius); background: var(--surface); color: var(--text); }
@@ -134,10 +149,10 @@
     </a>
     <nav aria-label="Main">
       <ul>
-        <li><a href="../#parts">Parts</a></li>
+        <li><a href="../#projects">Projects</a></li>
+        <li class="hide-sm"><a href="../#jetson">Jetson mods</a></li>
         <li class="hide-sm"><a href="../#about">About</a></li>
-        <li class="hide-sm"><a href="../#contact">Contact</a></li>
-        <li><a class="nav-cta" href="./" aria-current="page">Configure<span class="hide-sm"> a pack</span></a></li>
+        <li><a href="https://github.com/DubPFrye" target="_blank" rel="noopener">GitHub</a></li>
       </ul>
     </nav>
   </div>
@@ -152,6 +167,47 @@
       <div class="alpha" role="note">
         <strong>⚠ Alpha: untested design. Use at your own risk.</strong>
         <p>No pack from this configurator has been built or tested yet, and the design has not been checked for safety. Lithium-ion packs can catch fire or explode if they are designed, built or charged wrong. Treat everything here as a starting point for your own engineering, not a proven design.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="top-view">
+    <div class="wrap">
+      <div class="panel">
+        <h2 id="packTitle">Pack layout</h2>
+        <div class="status warn" id="engineStatus">Loading the configurator…</div>
+        <div class="status error" id="errors" hidden></div>
+        <div class="view-tabs" role="tablist" aria-label="Pack view">
+          <button role="tab" id="tab3d" aria-selected="true" aria-controls="view3d">3D view</button>
+          <button role="tab" id="tabCells" aria-selected="false" aria-controls="preview">Cell layout</button>
+        </div>
+        <div class="viewer" id="view3d" role="tabpanel" aria-labelledby="tab3d" aria-label="3D view of the assembled pack; drag to rotate">
+          <div class="tools">
+            <label class="explode">Exploded <input type="range" id="explode" min="0" max="1" step="0.01" value="0" aria-label="Exploded view amount"></label>
+            <label><input type="checkbox" id="seeThrough" checked> See-through</label>
+            <button type="button" id="resetView">Reset view</button>
+            <button type="button" id="fullScreen" aria-pressed="false">Full screen</button>
+          </div>
+          <p class="help">Drag to rotate · scroll or pinch to zoom · right-drag to pan</p>
+        </div>
+        <div class="preview" id="preview" role="tabpanel" aria-labelledby="tabCells" aria-label="Side-on drawing of the cell layout" hidden></div>
+        <div class="status warn" id="warnings" hidden></div>
+      </div>
+      <div class="designs" role="note" aria-label="Two enclosure designs">
+        <div class="design here">
+          <h3>Polycarbonate walls</h3>
+          <p class="where">You are on this one.</p>
+          <p style="margin:0">Every enclosure part is cut flat by SendCutSend: polycarbonate side plates and walls that lock together with tabs and slots, held by aluminum standoffs outside the walls.</p>
+          <p class="k">Pros</p><ul><li>No 3D printer needed: order the cut parts and assemble</li><li>Tabs and slots square the box up as it goes together</li><li>Every part is a flat cut part in a known material: nothing to dial in</li></ul>
+          <p class="k">Cons</p><ul><li>More cut parts per pack, so a higher SendCutSend bill</li><li>Long M5 standoffs are hard to find and cost several dollars each</li></ul>
+        </div>
+        <div class="design">
+          <h3>Printed walls</h3>
+          <p class="where"><a href="../configurator-printed/">Open this configurator &rarr;</a></p>
+          <p style="margin:0">The side plates and base plate are cut by SendCutSend; the walls are 3D printed in ABS, in pieces that fit a 220 mm bed and join with 45&deg; V ends. Coupling nuts and allthread inside the walls clamp the side plates on.</p>
+          <p class="k">Pros</p><ul><li>Fewer cut parts; the walls cost only filament</li><li>Cheap coupling nuts and allthread instead of long standoffs, hidden inside the walls</li><li>V joints align the pieces and make a longer path for water</li><li>Wall strength is a setting (the wall web)</li></ul>
+          <p class="k">Cons</p><ul><li>Needs a 3D printer, print time and some test prints to dial in the fit</li><li>More pieces to print and assemble</li><li>The walls take the clamping load in ABS, so their strength depends on your print settings</li></ul>
+        </div>
       </div>
     </div>
   </section>
@@ -188,27 +244,6 @@
       </aside>
 
       <div class="main-col">
-        <div class="panel">
-          <h2 id="packTitle">Pack layout</h2>
-          <div class="status warn" id="engineStatus">Loading the configurator…</div>
-          <div class="status error" id="errors" hidden></div>
-          <div class="status warn" id="warnings" hidden></div>
-          <div class="view-tabs" role="tablist" aria-label="Pack view">
-            <button role="tab" id="tab3d" aria-selected="true" aria-controls="view3d">3D view</button>
-            <button role="tab" id="tabCells" aria-selected="false" aria-controls="preview">Cell layout</button>
-          </div>
-          <div class="viewer" id="view3d" role="tabpanel" aria-labelledby="tab3d" aria-label="3D view of the assembled pack; drag to rotate">
-            <div class="tools">
-              <label class="explode">Exploded <input type="range" id="explode" min="0" max="1" step="0.01" value="0" aria-label="Exploded view amount"></label>
-              <label><input type="checkbox" id="seeThrough" checked> See-through</label>
-              <button type="button" id="resetView">Reset view</button>
-              <button type="button" id="fullScreen" aria-pressed="false">Full screen</button>
-            </div>
-            <p class="help">Drag to rotate · scroll or pinch to zoom · right-drag to pan</p>
-          </div>
-          <div class="preview" id="preview" role="tabpanel" aria-labelledby="tabCells" aria-label="Side-on drawing of the cell layout" hidden></div>
-        </div>
-
         <div class="panel">
           <h2>Specs</h2>
           <dl class="specs">
