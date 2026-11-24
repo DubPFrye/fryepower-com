@@ -53,8 +53,12 @@ This repo is `DubPFrye/fryepower-com` (renamed from `ebike_website`; GitHub redi
 
 ## Site conventions
 
-- The landing page (`index.html`, `styles.css`) keeps the `#parts`, `#about`, `#contact`
-  and `#projects` sections. The configurator's header links back to them (`../#parts`, ...).
+- FryePower is a free hobby-projects site, not a shop (Frye, 2026-11-23: nothing is sold or
+  planned). The landing page (`index.html`, `styles.css`) has `#projects`, `#jetson` (Jetson
+  Bolt Pro mods, linking to the public `jetson-bolt-bits` and `JBP-Stock-Motor-VESC-75100`
+  repos), `#about` and `#contact` (GitHub), with a GitHub link to `github.com/DubPFrye` in the
+  nav. `#parts` is kept as an anchor at the top of Projects because the configurator pages'
+  headers still link to `../#parts`. Link only public repos (the configurator repos are private).
 - Each project gets a card in the Projects section that links to its folder.
 - Work in progress is clearly labelled on the page: the configurator has an alpha badge and
   a disclaimer the visitor must accept before downloading, and the BMS translator guide has
